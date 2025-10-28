@@ -163,6 +163,7 @@ export default function ThankYou() {
   
   // Get data passed from Questions page
   const {
+    id: userId,
     message,
     attemptNumber,
     isNewUser,
@@ -193,6 +194,94 @@ export default function ThankYou() {
   // Use the normalized numeric attemptNum (handles string input and missing values)
   const isFirstAttempt = attemptNum === 1;
   const assessmentType = isFirstAttempt ? 'Pre-Assessment' : 'Post-Assessment';
+
+  // Certificate state for second-attempt users
+  const [certificate, setCertificate] = useState(null);
+  const [certLoading, setCertLoading] = useState(false);
+  const [certError, setCertError] = useState(null);
+
+  // Prefer configured backend base URL; fall back to localhost backend when not set
+  const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000';
+
+  // Try fetch existing certificate metadata if user is on 2nd attempt
+  useEffect(() => {
+    if (!userId) return;
+    if (attemptNum >= 2) {
+      (async () => {
+        try {
+          setCertLoading(true);
+          const res = await fetch(`${API_BASE}/api/certificates/user/${userId}`);
+          if (!res.ok) {
+            const text = await res.text().catch(() => null);
+            throw new Error(text || `Request failed with status ${res.status}`);
+          }
+          const json = await res.json();
+          if (json && json.success) {
+            setCertificate(json.certificate);
+          } else {
+            setCertificate(null);
+          }
+        } catch (err) {
+          console.error('Error fetching certificate:', err);
+          setCertError(err.message || String(err));
+        } finally {
+          setCertLoading(false);
+        }
+      })();
+    }
+  }, [userId, attemptNum]);
+
+  // Download or generate-then-download certificate
+  const handleDownloadCertificate = async () => {
+    if (!userId) return alert('User ID not available to fetch certificate.');
+    setCertError(null);
+    setCertLoading(true);
+    try {
+      let cert = certificate;
+      if (!cert) {
+        // Try generate
+        const genRes = await fetch(`${API_BASE}/api/certificates/generate/${userId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!genRes.ok) {
+          const text = await genRes.text().catch(() => null);
+          const msg = text || `Failed to generate certificate (status ${genRes.status})`;
+          setCertError(msg);
+          alert(msg);
+          return;
+        }
+
+        const genJson = await genRes.json().catch(() => null);
+        if (genJson && genJson.success) {
+          cert = genJson.certificate;
+          setCertificate(cert);
+        } else {
+          const msg = (genJson && (genJson.message || genJson.error)) || 'Failed to generate certificate';
+          setCertError(msg);
+          alert(msg);
+          return;
+        }
+      }
+
+      // Open certificate file URL (server serves at /certificates)
+      const filePath = cert.filePath || cert.file_path || cert.file;
+      if (!filePath) {
+        alert('Certificate file path not available');
+        return;
+      }
+
+      const url = `${API_BASE}${filePath}`;
+      window.open(url, '_blank');
+    } catch (err) {
+      console.error('Download certificate error:', err);
+      setCertError(err.message || String(err));
+      alert('Error downloading certificate: ' + (err.message || err));
+    } finally {
+      setCertLoading(false);
+    }
+  };
 
   // Messages based on attempt type
   const getAssessmentMessage = () => {
@@ -522,7 +611,7 @@ export default function ThankYou() {
                 <Grid container spacing={3}>
                   {isFirstAttempt ? (
                     <Grid item xs={12} sm={6}>
-                      <Button
+                      {/* <Button
                         fullWidth
                         variant="contained"
                         size="large"
@@ -531,12 +620,12 @@ export default function ThankYou() {
                         color="primary"
                         sx={{ py: 2 }}
                       >
-                        Proceed to Training
-                      </Button>
+                        
+                      </Button> */}
                     </Grid>
                   ) : (
                     <Grid item xs={12} sm={6}>
-                      <Button
+                      {/* <Button
                         fullWidth
                         variant="contained"
                         size="large"
@@ -545,13 +634,31 @@ export default function ThankYou() {
                         color="primary"
                         sx={{ py: 2 }}
                       >
-                        Take Quiz Again
+                        
+                      </Button> */}
+                    </Grid>
+                  )}
+
+                  {/* Download Certificate button for users who completed at least 2 attempts */}
+                  {attemptNum >= 2 && (
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        startIcon={<Verified />}
+                        onClick={handleDownloadCertificate}
+                        color="success"
+                        sx={{ py: 2 }}
+                        disabled={certLoading}
+                      >
+                        {certLoading ? 'Preparing...' : 'Download Certificate'}
                       </Button>
                     </Grid>
                   )}
                   
                   <Grid item xs={12} sm={6} md={3}>
-                    <Button
+                    {/* <Button
                       fullWidth
                       variant="contained"
                       size="large"
@@ -561,7 +668,7 @@ export default function ThankYou() {
                       sx={{ py: 2 }}
                     >
                       Admin Panel
-                    </Button>
+                    </Button> */}
                   </Grid>
                   
                   <Grid item xs={12} sm={6} md={3}>

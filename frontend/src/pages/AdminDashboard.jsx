@@ -148,11 +148,11 @@ const AdminLogin = ({ onLogin }) => {
           </button>
         </form>
 
-        <div style={styles.demoCredentials}>
+        {/* <div style={styles.demoCredentials}>
           <h4>Demo Credentials:</h4>
           <p><strong>Username:</strong> admin</p>
           <p><strong>Password:</strong> admin123</p>
-        </div>
+        </div> */}
       </div>
     </div>
   );

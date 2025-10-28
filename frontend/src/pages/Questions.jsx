@@ -187,6 +187,7 @@ export default function Questions() {
       // Pass attempt information to ThankYou page so it can show pre/post messaging
       navigate('/thankyou', {
         state: {
+          id: data.id || data.user?.id,
           attemptNumber: data.attemptNumber,
           isNewUser: data.isNewUser,
           completionTime: payload.completionTime,

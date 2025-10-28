@@ -181,9 +181,19 @@ export default function Questions() {
         completionTime: Math.floor(timeSpent / 60) // in minutes
       };
 
-      await saveUser(payload);
+      const res = await saveUser(payload);
+      const data = res?.data || {};
       sessionStorage.removeItem('userSignup');
-      navigate('/thankyou');
+      // Pass attempt information to ThankYou page so it can show pre/post messaging
+      navigate('/thankyou', {
+        state: {
+          attemptNumber: data.attemptNumber,
+          isNewUser: data.isNewUser,
+          completionTime: payload.completionTime,
+          score: data.user?.submissions?.slice(-1)[0]?.score ?? undefined,
+          message: data.message
+        }
+      });
     } catch (err) {
       console.error(err);
       setShowConfirmDialog(false);

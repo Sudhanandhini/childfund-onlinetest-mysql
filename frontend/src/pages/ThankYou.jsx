@@ -14,10 +14,6 @@ import {
   Divider,
   Fade,
   Slide,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -166,13 +162,22 @@ export default function ThankYou() {
   const [animationStep, setAnimationStep] = useState(0);
   
   // Get data passed from Questions page
-  const { 
-    message, 
-    attemptNumber, 
-    isNewUser, 
-    completionTime, 
-    score 
+  const {
+    message,
+    attemptNumber,
+    isNewUser,
+    completionTime,
+    score
   } = location.state || {};
+
+  // Normalize attempt number: sometimes it's passed as a string or undefined.
+  const attemptNum = (() => {
+    const n = Number(attemptNumber);
+    if (!Number.isNaN(n) && n > 0) return n;
+    // if isNewUser flag is provided and truthy, treat as first attempt
+    if (isNewUser) return 1;
+    return 0;
+  })();
   
   // Get user data from sessionStorage
   const [userData] = useState(() => {
@@ -183,6 +188,30 @@ export default function ThankYou() {
       school: '',
     };
   });
+
+  // Determine if this is first attempt (Pre-Assessment) or second attempt (Post-Assessment)
+  // Use the normalized numeric attemptNum (handles string input and missing values)
+  const isFirstAttempt = attemptNum === 1;
+  const assessmentType = isFirstAttempt ? 'Pre-Assessment' : 'Post-Assessment';
+
+  // Messages based on attempt type
+  const getAssessmentMessage = () => {
+    if (isFirstAttempt) {
+      return {
+        title: "Thank you for completing the Knowledge, Attitude, and Practices (KAP) Pre-Assessment",
+        message: `Your responses will help us understand current levels of awareness and preparedness on Online Sexual Exploitation and Abuse of Children (OSEAC). This information is important for improving the training experience and ensuring that every participant is equipped to create safer online environments for children.`,
+        instruction: "Please proceed to the training session. We look forward to supporting your learning journey and enhancing your role in promoting digital safety."
+      };
+    } else {
+      return {
+        title: "Thank you for completing the Knowledge, Attitude, and Practices (KAP) Post-Assessment",
+        message: `Your participation is valuable in evaluating the learning outcomes achieved through the OSEAC training. The insights gathered will help measure the impact of the program and strengthen child protection initiatives.`,
+        instruction: "We appreciate your commitment to ensuring children's safety in digital spaces and encourage you to apply the knowledge and skills gained during this training within your school and community."
+      };
+    }
+  };
+
+  const assessmentData = getAssessmentMessage();
 
   useEffect(() => {
     // Animation sequence timing
@@ -211,7 +240,7 @@ export default function ThankYou() {
   const handleShare = async () => {
     const shareData = {
       title: 'Quiz Completed Successfully! 🎉',
-      text: `I just completed a quiz${attemptNumber ? ` (attempt #${attemptNumber})` : ''}! Check it out!`,
+      text: `I just completed the ${assessmentType} for OSEAC training! Check it out!`,
       url: window.location.origin,
     };
 
@@ -230,7 +259,7 @@ export default function ThankYou() {
   };
 
   const copyToClipboard = async () => {
-    const text = `I just completed a quiz${attemptNumber ? ` (attempt #${attemptNumber})` : ''}! Check it out at ${window.location.origin}`;
+    const text = `I just completed the ${assessmentType} for OSEAC training! Check it out at ${window.location.origin}`;
     
     try {
       await navigator.clipboard.writeText(text);
@@ -240,29 +269,6 @@ export default function ThankYou() {
       console.error('Failed to copy text: ', err);
     }
   };
-
-  // const achievements = [
-  //   { 
-  //     icon: <CheckCircle />, 
-  //     text: 'Quiz Completed Successfully', 
-  //     color: 'success' 
-  //   },
-  //   { 
-  //     icon: <Timer />, 
-  //     text: completionTime ? `Finished in ${completionTime} minutes` : 'Great timing!', 
-  //     color: 'info' 
-  //   },
-  //   { 
-  //     icon: <Verified />, 
-  //     text: 'Responses Saved Securely', 
-  //     color: 'primary' 
-  //   },
-  //   { 
-  //     icon: <TrendingUp />, 
-  //     text: isNewUser ? 'First Attempt!' : `Attempt #${attemptNumber}`, 
-  //     color: 'secondary' 
-  //   },
-  // ];
 
   return (
     <ThemeProvider theme={theme}>
@@ -312,8 +318,6 @@ export default function ThankYou() {
           }}
         />
 
-        {/* CSS Confetti Effect */}
-    
         <Container maxWidth="md" sx={{ py: 4, position: 'relative', zIndex: 1 }}>
           {/* Main Success Card */}
           <Fade in={true} timeout={1000}>
@@ -334,7 +338,7 @@ export default function ThankYou() {
                       height: 120,
                       mx: 'auto',
                       mb: 3,
-                      bgcolor: 'success.main',
+                      bgcolor: isFirstAttempt ? 'info.main' : 'success.main',
                       animation: animationStep >= 1 ? `${celebrate} 2s ease-in-out` : 'none',
                     }}
                   >
@@ -356,37 +360,57 @@ export default function ThankYou() {
                         mb: 2,
                       }}
                     >
-                      🎉 Congratulations!
+                      🎉 {assessmentType} Completed!
                     </Typography>
                     <Typography variant="h5" color="text.secondary" gutterBottom>
-                      Quiz Completed Successfully
+                      {assessmentData.title}
                     </Typography>
                   </Box>
                 </Fade>
 
-                {/* Custom Message */}
-                {message && (
-                  <Fade in={animationStep >= 3} timeout={1000}>
-                    <Box sx={{ mt: 3, mb: 3 }}>
-                      <Paper
-                        sx={{
-                          p: 3,
-                          background: 'linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%)',
-                          border: '2px solid #c8e6c9',
-                          borderRadius: 3,
-                        }}
+                {/* Assessment Message */}
+                <Fade in={animationStep >= 3} timeout={1000}>
+                  <Box sx={{ mt: 3, mb: 3 }}>
+                    <Paper
+                      sx={{
+                        p: 3,
+                        background: 'linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%)',
+                        border: '2px solid #c8e6c9',
+                        borderRadius: 3,
+                      }}
+                    >
+                      <Typography
+                        variant="body1"
+                        color="text.primary"
+                        paragraph
+                        sx={{ textAlign: 'left', lineHeight: 1.6 }}
                       >
-                        <Typography
-                          variant="h6"
-                          color="success.dark"
-                          sx={{ fontWeight: 600 }}
-                        >
-                          {message}
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  </Fade>
-                )}
+                        {assessmentData.message}
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        color="text.primary"
+                        sx={{ textAlign: 'left', lineHeight: 1.6, fontWeight: 600 }}
+                      >
+                        {assessmentData.instruction}
+                      </Typography>
+                    </Paper>
+                  </Box>
+                </Fade>
+
+                {/* Assessment Type Badge */}
+                <Fade in={animationStep >= 3} timeout={1200}>
+                  <Box sx={{ mt: 2, mb: 2 }}>
+                    <Chip
+                      icon={isFirstAttempt ? <TrendingUp /> : <EmojiEvents />}
+                      label={`${assessmentType} - ${isFirstAttempt ? 'Before Training' : 'After Training'}`}
+                      color={isFirstAttempt ? 'info' : 'success'}
+                      variant="filled"
+                      size="large"
+                      sx={{ fontSize: '1rem', py: 2 }}
+                    />
+                  </Box>
+                </Fade>
 
                 {/* User Info Chips */}
                 {userData && (
@@ -430,15 +454,13 @@ export default function ThankYou() {
             </Card>
           </Fade>
 
-     
-
           {/* Performance Stats */}
-          {(score !== undefined || completionTime) && (
+          {/* {(score !== undefined || completionTime) && (
             <Slide direction="up" in={animationStep >= 3} timeout={1200}>
               <Card sx={{ mb: 4 }}>
                 <CardContent sx={{ p: 4 }}>
                   <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
-                    📊 Your Performance
+                    📊 Your {assessmentType} Performance
                   </Typography>
                   <Grid container spacing={3}>
                     {score !== undefined && (
@@ -487,7 +509,7 @@ export default function ThankYou() {
                 </CardContent>
               </Card>
             </Slide>
-          )}
+          )} */}
 
           {/* Action Buttons Card */}
           <Slide direction="up" in={animationStep >= 3} timeout={1400}>
@@ -498,7 +520,35 @@ export default function ThankYou() {
                 </Typography>
                 
                 <Grid container spacing={3}>
-                  
+                  {isFirstAttempt ? (
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        startIcon={<School />}
+                        onClick={handleGoHome}
+                        color="primary"
+                        sx={{ py: 2 }}
+                      >
+                        Proceed to Training
+                      </Button>
+                    </Grid>
+                  ) : (
+                    <Grid item xs={12} sm={6}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        size="large"
+                        startIcon={<RestartAlt />}
+                        onClick={handleTakeAgain}
+                        color="primary"
+                        sx={{ py: 2 }}
+                      >
+                        Take Quiz Again
+                      </Button>
+                    </Grid>
+                  )}
                   
                   <Grid item xs={12} sm={6} md={3}>
                     <Button
@@ -514,7 +564,6 @@ export default function ThankYou() {
                     </Button>
                   </Grid>
                   
-                 
                   <Grid item xs={12} sm={6} md={3}>
                     <Button
                       fullWidth
@@ -534,17 +583,22 @@ export default function ThankYou() {
                 {/* Info Footer */}
                 <Box textAlign="center">
                   <Typography variant="body1" color="text.secondary" paragraph sx={{ mb: 2 }}>
-                    ✅ <strong>Your responses have been saved successfully</strong><br/>
+                    ✅ <strong>Your {assessmentType.toLowerCase()} responses have been saved successfully</strong><br/>
                     📊 Results are available in the admin dashboard<br/>
-                    🔄 You can retake this quiz anytime with the same phone number
+                    {isFirstAttempt ? (
+                      "🎯 Complete the training to take the post-assessment"
+                    ) : (
+                      "🏆 You've completed both pre and post assessments!"
+                    )}
                   </Typography>
                   
-                  {!isNewUser && attemptNumber && (
-                    <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
-                      💾 This was your <strong>attempt #{attemptNumber}</strong> - 
-                      all attempts are saved separately for your reference
-                    </Typography>
-                  )}
+                  <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
+                    {isFirstAttempt ? (
+                      "📚 Proceed with the training to enhance your knowledge about OSEAC"
+                    ) : (
+                      "💪 Thank you for your commitment to child safety in digital spaces"
+                    )}
+                  </Typography>
                 </Box>
               </CardContent>
             </Card>
@@ -569,7 +623,7 @@ export default function ThankYou() {
           </DialogTitle>
           <DialogContent>
             <Typography paragraph>
-              Congratulations on completing the quiz! Share your achievement with others:
+              Congratulations on completing the {assessmentType}! Share your achievement with others:
             </Typography>
             <Paper 
               sx={{ 
@@ -582,7 +636,7 @@ export default function ThankYou() {
               }}
             >
               <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-                I just completed a quiz{attemptNumber ? ` (attempt #${attemptNumber})` : ''}! 
+                I just completed the {assessmentType} for OSEAC training! 
                 Check it out at {window.location.origin}
               </Typography>
             </Paper>

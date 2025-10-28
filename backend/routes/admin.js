@@ -1,5 +1,5 @@
 import express from "express";
-import { User, Submission, Answer } from "../models/index.js";
+import { User, Submission, Answer, Certificate } from "../models/index.js";
 import { Op } from 'sequelize';
 
 const router = express.Router();
@@ -15,6 +15,9 @@ router.get("/users", async (req, res) => {
           model: Answer,
           as: 'answers'
         }]
+      }, {
+        model: Certificate,
+        as: 'certificate'
       }],
       order: [['updatedAt', 'DESC']]
     });
@@ -29,7 +32,14 @@ router.get("/users", async (req, res) => {
         submissionCount,
         totalAttempts: user.totalAttempts || submissionCount,
         latestSubmission: user.lastSubmission || user.submissions?.[user.submissions.length - 1]?.submittedAt || user.createdAt,
-        hasMultipleAttempts: submissionCount > 1
+        hasMultipleAttempts: submissionCount > 1,
+        hasCertificate: !!user.certificate,
+        certificate: user.certificate ? {
+          id: user.certificate.id,
+          certificateNumber: user.certificate.certificateNumber,
+          filePath: user.certificate.filePath,
+          issueDate: user.certificate.issueDate
+        } : null
       };
     });
 

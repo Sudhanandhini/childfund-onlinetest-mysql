@@ -167,6 +167,7 @@ const AdminDashboard = ({ onLogout }) => {
   const [selectedLanguage, setSelectedLanguage] = useState('all');
   const [viewMode, setViewMode] = useState('users');
   const [exportingUserId, setExportingUserId] = useState(null);
+  const [generatingCertificate, setGeneratingCertificate] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -185,7 +186,14 @@ const AdminDashboard = ({ onLogout }) => {
       console.log('Fetched users:', data);
       
       const usersData = data.users || data || [];
-      setUsers(Array.isArray(usersData) ? usersData : []);
+      // Ensure each user has a proper ID field
+      const processedUsers = (Array.isArray(usersData) ? usersData : []).map(user => ({
+        ...user,
+        id: user.id || user._id, // Ensure we have a consistent id field
+        totalAttempts: user.totalAttempts || user.submissions?.length || 0
+      }));
+      
+      setUsers(processedUsers);
       setError('');
     } catch (err) {
       console.error('Error fetching users:', err);
@@ -193,6 +201,123 @@ const AdminDashboard = ({ onLogout }) => {
       setUsers([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Generate certificate for user
+  const handleGenerateCertificate = async (userId) => {
+    if (!userId) {
+      console.error('Invalid user ID');
+      alert('Invalid user ID. Please try again.');
+      return;
+    }
+
+    setGeneratingCertificate(userId);
+    try {
+      // First check if user has completed 2 attempts
+      const user = users.find(u => String(u.id) === String(userId));
+      
+      if (!user) {
+        console.error('User not found for ID:', userId);
+        console.log('Available users:', users.map(u => ({ id: u.id, name: u.name })));
+        throw new Error('User not found');
+      }
+
+      const attempts = user.totalAttempts || user.submissions?.length || 0;
+      console.log(`User ${user.name} has ${attempts} attempts`);
+      
+      if (attempts < 2) {
+        throw new Error('User must complete 2 attempts to generate certificate');
+      }
+
+      const response = await fetch(`http://localhost:5000/api/certificates/generate/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: user.name,
+          phone: user.phone,
+          school: user.school,
+          language: user.language,
+          state: user.state,
+          district: user.district
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to generate certificate');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        alert('Certificate generated successfully!');
+        fetchUsers(); // Refresh to show new certificate
+      } else {
+        throw new Error(data.message || 'Failed to generate certificate');
+      }
+    } catch (error) {
+      console.error('Error generating certificate:', error);
+      alert(error.message || 'Failed to generate certificate. Please try again.');
+    } finally {
+      setGeneratingCertificate(null);
+    }
+  };
+
+  // Download certificate
+  const handleDownloadCertificate = (filePath) => {
+    window.open(`http://localhost:5000${filePath}`, '_blank');
+  };
+
+  // Get certificate status badge
+  const getCertificateStatus = (user) => {
+    const attempts = user.totalAttempts || user.submissions?.length || 0;
+    const userId = user.id || user._id;
+    
+    if (user.hasCertificate && user.certificate) {
+      return (
+        <div style={styles.certificateReady}>
+          <div style={styles.certificateBadge}>✓ Certificate Ready</div>
+          <small style={styles.certNumber}>
+            {user.certificate.certificateNumber}
+          </small>
+          <button 
+            style={styles.downloadButton}
+            onClick={() => handleDownloadCertificate(user.certificate.filePath)}
+          >
+            Download
+          </button>
+        </div>
+      );
+    } else if (attempts >= 2) {
+      return (
+        <div style={styles.certificatePending}>
+          <div style={styles.pendingBadge}>Generate Certificate</div>
+          <button 
+            style={{
+              ...styles.generateButton,
+              opacity: generatingCertificate === userId ? 0.5 : 1
+            }}
+            onClick={() => handleGenerateCertificate(userId)}
+            disabled={generatingCertificate === userId}
+          >
+            {generatingCertificate === userId ? 'Generating...' : 'Generate Now'}
+          </button>
+        </div>
+      );
+    } else {
+      return (
+        <div style={styles.notEligible}>
+          <span style={styles.notEligibleBadge}>
+            {attempts}/2 Attempts
+          </span>
+          <small style={styles.notEligibleText}>
+            Complete 2 attempts to get certificate
+          </small>
+        </div>
+      );
     }
   };
 
@@ -257,109 +382,6 @@ const AdminDashboard = ({ onLogout }) => {
     }
   };
 
-  // Export individual user data as Excel with Questions and Answers clearly visible
-  // const exportUserData = async (user) => {
-  //   setExportingUserId(user._id || user.id);
-    
-  //   try {
-  //     const workbook = XLSX.utils.book_new();
-
-  //     // Sheet 1: User Information
-  //     const userInfoData = [
-  //       ['USER INFORMATION'],
-  //       [''],
-  //       ['Field', 'Value'],
-  //       ['Name', user.name],
-  //       ['Phone', user.phone],
-  //       ['School', user.school || 'N/A'],
-  //       ['Class', user.class || 'N/A'],
-  //       ['Language', user.language],
-  //       ['Total Attempts', user.totalAttempts || user.submissions?.length || 1],
-  //       ['First Submission', new Date(user.createdAt).toLocaleString()],
-  //       ['Latest Submission', new Date(user.lastSubmission || user.updatedAt).toLocaleString()]
-  //     ];
-  //     const userInfoSheet = XLSX.utils.aoa_to_sheet(userInfoData);
-  //     XLSX.utils.book_append_sheet(workbook, userInfoSheet, 'User Info');
-
-  //     // Create separate sheets for each submission with Q&A
-  //     if (user.submissions && user.submissions.length > 0) {
-  //       user.submissions.forEach((submission, index) => {
-  //         const qnaData = [
-  //           [`ATTEMPT #${index + 1} - Questions and Answers`],
-  //           [''],
-  //           ['User:', user.name],
-  //           ['Phone:', user.phone],
-  //           ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-  //           ['Session ID:', submission.sessionId || 'N/A'],
-  //           ['Score:', submission.score || 0],
-  //           ['Completion Time:', submission.completionTime ? `${submission.completionTime} minutes` : 'N/A'],
-  //           [''],
-  //           ['Question ID', 'Question', 'Answer']
-  //         ];
-
-  //         if (submission.answers && submission.answers.length > 0) {
-  //           submission.answers.forEach(answer => {
-  //             qnaData.push([
-  //               answer.questionId || 'N/A',
-  //               answer.question || 'Question not available',
-  //               answer.answer || 'No answer provided'
-  //             ]);
-  //           });
-  //         } else {
-  //           qnaData.push(['', 'No answers recorded', '']);
-  //         }
-
-  //         const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-          
-  //         // Set column widths for better readability
-  //         qnaSheet['!cols'] = [
-  //           { wch: 12 },  // Question ID column
-  //           { wch: 60 },  // Question column (wider)
-  //           { wch: 40 }   // Answer column
-  //         ];
-
-  //         const sheetName = `Attempt ${index + 1}`;
-  //         XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-  //       });
-  //     } else if (user.answers && user.answers.length > 0) {
-  //       const qnaData = [
-  //         ['Questions and Answers'],
-  //         [''],
-  //         ['User:', user.name],
-  //         ['Phone:', user.phone],
-  //         ['Submitted At:', new Date(user.createdAt).toLocaleString()],
-  //         [''],
-  //         ['Question ID', 'Question', 'Answer']
-  //       ];
-
-  //       user.answers.forEach(answer => {
-  //         qnaData.push([
-  //           answer.questionId || 'N/A',
-  //           answer.question || 'Question not available',
-  //           answer.answer || 'No answer provided'
-  //         ]);
-  //       });
-
-  //       const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-  //       qnaSheet['!cols'] = [
-  //         { wch: 12 },
-  //         { wch: 60 },
-  //         { wch: 40 }
-  //       ];
-  //       XLSX.utils.book_append_sheet(workbook, qnaSheet, 'Answers');
-  //     }
-
-  //     // Download Excel file
-  //     const fileName = `${user.name.replace(/\s+/g, '_')}_${user.phone}_QnA_${new Date().toISOString().split('T')[0]}.xlsx`;
-  //     XLSX.writeFile(workbook, fileName);
-
-  //   } catch (error) {
-  //     console.error('Error exporting user data:', error);
-  //     alert('Error exporting user data. Please try again.');
-  //   } finally {
-  //     setExportingUserId(null);
-  //   }
-  // };
   const exportUserData = async (user) => {
     setExportingUserId(user._id || user.id);
     
@@ -384,489 +406,366 @@ const AdminDashboard = ({ onLogout }) => {
       const userInfoSheet = XLSX.utils.aoa_to_sheet(userInfoData);
       XLSX.utils.book_append_sheet(workbook, userInfoSheet, 'User Info');
 
-    // Create separate sheets for each submission with Q&A
-    if (user.submissions && user.submissions.length > 0) {
-      user.submissions.forEach((submission, index) => {
+      // Create separate sheets for each submission with Q&A
+      if (user.submissions && user.submissions.length > 0) {
+        user.submissions.forEach((submission, index) => {
+          const qnaData = [
+            [`ATTEMPT #${index + 1} - Questions and Answers`],
+            [''],
+            ['User:', user.name],
+            ['Phone:', user.phone],
+            ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
+            ['Score:', submission.score || 0],
+            [''],
+            ['Question ID', 'Question', 'Answer', 'Is Correct']
+          ];
+
+          if (submission.answers && submission.answers.length > 0) {
+            submission.answers.forEach(answer => {
+              qnaData.push([
+                answer.questionId || 'N/A',
+                answer.question || 'Question not available',
+                answer.answer || 'No answer provided',
+                answer.isCorrect ? 'Yes' : 'No'
+              ]);
+            });
+          } else {
+            qnaData.push(['', 'No answers recorded', '', '']);
+          }
+
+          const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
+          
+          // Set column widths for better readability
+          qnaSheet['!cols'] = [
+            { wch: 12 },  // Question ID column
+            { wch: 60 },  // Question column (wider)
+            { wch: 40 },  // Answer column
+            { wch: 10 }   // Is Correct column
+          ];
+
+          const sheetName = `Attempt ${index + 1}`;
+          XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
+        });
+      } else if (user.answers && user.answers.length > 0) {
+        // For legacy single submission data
         const qnaData = [
-          [`ATTEMPT #${index + 1} - Questions and Answers`],
+          ['Questions and Answers'],
           [''],
           ['User:', user.name],
           ['Phone:', user.phone],
-          ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-          ['Score:', submission.score || 0],
+          ['Submitted At:', new Date(user.createdAt).toLocaleString()],
           [''],
           ['Question ID', 'Question', 'Answer', 'Is Correct']
         ];
 
-        if (submission.answers && submission.answers.length > 0) {
-          submission.answers.forEach(answer => {
-            qnaData.push([
-              answer.questionId || 'N/A',
-              answer.question || 'Question not available',
-              answer.answer || 'No answer provided',
-              answer.isCorrect ? 'Yes' : 'No'
-            ]);
-          });
-        } else {
-          qnaData.push(['', 'No answers recorded', '', '']);
-        }
+        user.answers.forEach(answer => {
+          qnaData.push([
+            answer.questionId || 'N/A',
+            answer.question || 'Question not available',
+            answer.answer || 'No answer provided',
+            answer.isCorrect ? 'Yes' : 'No'
+          ]);
+        });
 
         const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-        
-        // Set column widths for better readability
         qnaSheet['!cols'] = [
-          { wch: 12 },  // Question ID column
-          { wch: 60 },  // Question column (wider)
-          { wch: 40 },  // Answer column
-          { wch: 10 }   // Is Correct column
+          { wch: 12 },
+          { wch: 60 },
+          { wch: 40 },
+          { wch: 10 }
         ];
-
-        const sheetName = `Attempt ${index + 1}`;
-        XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-      });
-    } else if (user.answers && user.answers.length > 0) {
-      // For legacy single submission data
-      const qnaData = [
-        ['Questions and Answers'],
-        [''],
-        ['User:', user.name],
-        ['Phone:', user.phone],
-        ['Submitted At:', new Date(user.createdAt).toLocaleString()],
-        [''],
-        ['Question ID', 'Question', 'Answer', 'Is Correct']
-      ];
-
-      user.answers.forEach(answer => {
-        qnaData.push([
-          answer.questionId || 'N/A',
-          answer.question || 'Question not available',
-          answer.answer || 'No answer provided',
-          answer.isCorrect ? 'Yes' : 'No'
+        XLSX.utils.book_append_sheet(workbook, qnaSheet, 'Answers');
+      } else {
+        const noDataSheet = XLSX.utils.aoa_to_sheet([
+          ['No Data Available'],
+          [''],
+          ['This user has no quiz submissions yet.']
         ]);
-      });
+        XLSX.utils.book_append_sheet(workbook, noDataSheet, 'No Data');
+      }
 
-      const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-      qnaSheet['!cols'] = [
-        { wch: 12 },
-        { wch: 60 },
-        { wch: 40 },
-        { wch: 10 }
-      ];
-      XLSX.utils.book_append_sheet(workbook, qnaSheet, 'Answers');
-    } else {
-      const noDataSheet = XLSX.utils.aoa_to_sheet([
-        ['No Data Available'],
-        [''],
-        ['This user has no quiz submissions yet.']
-      ]);
-      XLSX.utils.book_append_sheet(workbook, noDataSheet, 'No Data');
+      // Download Excel file
+      const fileName = `${user.name.replace(/\s+/g, '_')}_${user.phone}_QnA_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(workbook, fileName);
+
+    } catch (error) {
+      console.error('Error exporting user data:', error);
+      alert('Error exporting user data. Please try again.');
+    } finally {
+      setExportingUserId(null);
     }
+  };
 
-    // Download Excel file
-    const fileName = `${user.name.replace(/\s+/g, '_')}_${user.phone}_QnA_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-
-  } catch (error) {
-    console.error('Error exporting user data:', error);
-    alert('Error exporting user data. Please try again.');
-  } finally {
-    setExportingUserId(null);
-  }
-};
-
-  // Export all users data as Excel with Questions and Answers
-  // const exportAllData = () => {
-  //   try {
-  //     const workbook = XLSX.utils.book_new();
-
-  //     if (viewMode === 'submissions') {
-  //       // For each submission, create detailed Q&A sheet
-  //       filteredData.forEach((submission, subIndex) => {
-  //         const user = submission.user;
-  //         const qnaData = [
-  //           [`Submission #${subIndex + 1} - ${user.name}`],
-  //           [''],
-  //           ['User Information'],
-  //           ['Name:', user.name],
-  //           ['Phone:', user.phone],
-  //           ['School:', user.school || 'N/A'],
-  //           ['Class:', user.class || 'N/A'],
-  //           ['Language:', user.language],
-  //           ['Attempt Number:', `${submission.submissionNumber} of ${submission.totalUserSubmissions}`],
-  //           ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-  //           [''],
-  //           ['Question ID', 'Question', 'Answer']
-  //         ];
-
-  //         if (submission.answers && submission.answers.length > 0) {
-  //           submission.answers.forEach(answer => {
-  //             qnaData.push([
-  //               answer.questionId || 'N/A',
-  //               answer.question || 'Question not available',
-  //               answer.answer || 'No answer provided'
-  //             ]);
-  //           });
-  //         } else {
-  //           qnaData.push(['', 'No answers recorded', '']);
-  //         }
-
-  //         const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-  //         qnaSheet['!cols'] = [
-  //           { wch: 12 },
-  //           { wch: 60 },
-  //           { wch: 40 }
-  //         ];
-
-  //         const sheetName = `${user.name.substring(0, 15)}_${subIndex + 1}`.replace(/[:\\\/\?\*\[\]]/g, '');
-  //         XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-  //       });
-
-  //       XLSX.writeFile(workbook, `All_Submissions_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
-
-  //     } else {
-  //       // Export all users with their Q&A
-  //       filteredData.forEach((user, userIndex) => {
-  //         if (user.submissions && user.submissions.length > 0) {
-  //           user.submissions.forEach((submission, subIndex) => {
-  //             const qnaData = [
-  //               [`${user.name} - Attempt ${subIndex + 1}`],
-  //               [''],
-  //               ['User Information'],
-  //               ['Name:', user.name],
-  //               ['Phone:', user.phone],
-  //               ['School:', user.school || 'N/A'],
-  //               ['Class:', user.class || 'N/A'],
-  //               ['Language:', user.language],
-  //               ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-  //               ['Session ID:', submission.sessionId || 'N/A'],
-  //               [''],
-  //               ['Question ID', 'Question', 'Answer']
-  //             ];
-
-  //             if (submission.answers && submission.answers.length > 0) {
-  //               submission.answers.forEach(answer => {
-  //                 qnaData.push([
-  //                   answer.questionId || 'N/A',
-  //                   answer.question || 'Question not available',
-  //                   answer.answer || 'No answer provided'
-  //                 ]);
-  //               });
-  //             }
-
-  //             const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-  //             qnaSheet['!cols'] = [
-  //               { wch: 12 },
-  //               { wch: 60 },
-  //               { wch: 40 }
-  //             ];
-
-  //             const sheetName = `${user.name.substring(0, 12)}_A${subIndex + 1}`.replace(/[:\\\/\?\*\[\]]/g, '');
-  //             XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-  //           });
-  //         } else if (user.answers && user.answers.length > 0) {
-  //           const qnaData = [
-  //             [`${user.name} - Answers`],
-  //             [''],
-  //             ['User Information'],
-  //             ['Name:', user.name],
-  //             ['Phone:', user.phone],
-  //             ['School:', user.school || 'N/A'],
-  //             ['Class:', user.class || 'N/A'],
-  //             ['Language:', user.language],
-  //             [''],
-  //             ['Question ID', 'Question', 'Answer']
-  //           ];
-
-  //           user.answers.forEach(answer => {
-  //             qnaData.push([
-  //               answer.questionId || 'N/A',
-  //               answer.question || 'Question not available',
-  //               answer.answer || 'No answer provided'
-  //             ]);
-  //           });
-
-  //           const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-  //           qnaSheet['!cols'] = [
-  //             { wch: 12 },
-  //             { wch: 60 },
-  //             { wch: 40 }
-  //           ];
-
-  //           const sheetName = `${user.name.substring(0, 20)}`.replace(/[:\\\/\?\*\[\]]/g, '');
-  //           XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-  //         }
-  //       });
-
-  //       XLSX.writeFile(workbook, `All_Users_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
-  //     }
-
-  //   } catch (error) {
-  //     console.error('Error exporting data:', error);
-  //     alert('Error exporting data. Please try again.');
-  //   }
-  // };
-const exportAllData = async () => {
-  try {
-    console.log('Starting export all data...');
-    
-    // Fetch complete data for all filtered users
-    const usersToExport = viewMode === 'submissions' ? 
-      filteredData.map(s => s.user) : 
-      filteredData;
-    
-    // Remove duplicates by user ID
-    const uniqueUsers = Array.from(
-      new Map(usersToExport.map(u => [(u._id || u.id), u])).values()
-    );
-    
-    console.log(`Fetching complete data for ${uniqueUsers.length} users`);
-    
-    // Fetch complete data for each user
-    const completeUsersData = await Promise.all(
-      uniqueUsers.map(async (user) => {
-        const userId = user._id || user.id;
-        try {
-          const response = await fetch(`http://localhost:5000/api/admin/users/${userId}`);
-          if (response.ok) {
-            return await response.json();
+  const exportAllData = async () => {
+    try {
+      console.log('Starting export all data...');
+      
+      // Fetch complete data for all filtered users
+      const usersToExport = viewMode === 'submissions' ? 
+        filteredData.map(s => s.user) : 
+        filteredData;
+      
+      // Remove duplicates by user ID
+      const uniqueUsers = Array.from(
+        new Map(usersToExport.map(u => [(u._id || u.id), u])).values()
+      );
+      
+      console.log(`Fetching complete data for ${uniqueUsers.length} users`);
+      
+      // Fetch complete data for each user
+      const completeUsersData = await Promise.all(
+        uniqueUsers.map(async (user) => {
+          const userId = user._id || user.id;
+          try {
+            const response = await fetch(`http://localhost:5000/api/admin/users/${userId}`);
+            if (response.ok) {
+              return await response.json();
+            }
+          } catch (err) {
+            console.error(`Failed to fetch user ${userId}:`, err);
           }
-        } catch (err) {
-          console.error(`Failed to fetch user ${userId}:`, err);
-        }
-        return user; // Fallback to original data if fetch fails
-      })
-    );
-    
-    console.log('Complete users data fetched:', completeUsersData.length);
-    
-    const workbook = XLSX.utils.book_new();
-    const usedSheetNames = new Set(); // Track used sheet names to avoid duplicates
-
-    if (viewMode === 'submissions') {
-      // Export all submissions
-      let globalSheetIndex = 1;
+          return user; // Fallback to original data if fetch fails
+        })
+      );
       
-      completeUsersData.forEach((userData, userIdx) => {
-        if (userData.submissions && userData.submissions.length > 0) {
-          userData.submissions.forEach((submission, subIdx) => {
-            const qnaData = [
-              [`${userData.name} - Submission ${globalSheetIndex}`],
-              [''],
-              ['User Information'],
-              ['Name:', userData.name],
-              ['Phone:', userData.phone],
-              ['School:', userData.school || 'N/A'],
-              ['Class:', userData.class || 'N/A'],
-              ['Language:', userData.language],
-              ['Attempt:', `${subIdx + 1} of ${userData.submissions.length}`],
-              ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-              [''],
-              ['Question ID', 'Question', 'Answer']
-            ];
-
-            if (submission.answers && submission.answers.length > 0) {
-              submission.answers.forEach(answer => {
-                qnaData.push([
-                  answer.questionId || 'N/A',
-                  answer.question || 'Question not available',
-                  answer.answer || 'No answer provided'
-                ]);
-              });
-            } else {
-              qnaData.push(['', 'No answers recorded', '']);
-            }
-
-            const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-            qnaSheet['!cols'] = [{ wch: 12 }, { wch: 70 }, { wch: 40 }];
-
-            // Create unique sheet name
-            let baseSheetName = `${userData.name.substring(0, 10)}_${globalSheetIndex}`.replace(/[:\\\/\?\*\[\]]/g, '');
-            let sheetName = baseSheetName;
-            let counter = 1;
-            
-            // Ensure uniqueness
-            while (usedSheetNames.has(sheetName)) {
-              sheetName = `${baseSheetName}_${counter}`;
-              counter++;
-            }
-            usedSheetNames.add(sheetName);
-
-            XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-            globalSheetIndex++;
-          });
-        }
-      });
-
-      XLSX.writeFile(workbook, `All_Submissions_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
-
-    } else {
-      // Export all users
-      let globalSheetIndex = 1;
+      console.log('Complete users data fetched:', completeUsersData.length);
       
-      completeUsersData.forEach((userData, userIdx) => {
-        if (userData.submissions && userData.submissions.length > 0) {
-          userData.submissions.forEach((submission, subIdx) => {
-            const qnaData = [
-              [`${userData.name} - Attempt ${subIdx + 1}`],
-              [''],
-              ['User Information'],
-              ['Name:', userData.name],
-              ['Phone:', userData.phone],
-              ['School:', userData.school || 'N/A'],
-              ['Class:', userData.class || 'N/A'],
-              ['Language:', userData.language],
-              ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
-              ['Session ID:', submission.sessionId || 'N/A'],
-              [''],
-              ['Question ID', 'Question', 'Answer']
-            ];
+      const workbook = XLSX.utils.book_new();
+      const usedSheetNames = new Set(); // Track used sheet names to avoid duplicates
 
-            if (submission.answers && submission.answers.length > 0) {
-              submission.answers.forEach(answer => {
-                qnaData.push([
-                  answer.questionId || 'N/A',
-                  answer.question || 'Question not available',
-                  answer.answer || 'No answer provided'
-                ]);
-              });
-            } else {
-              qnaData.push(['', 'No answers', '']);
-            }
+      if (viewMode === 'submissions') {
+        // Export all submissions
+        let globalSheetIndex = 1;
+        
+        completeUsersData.forEach((userData, userIdx) => {
+          if (userData.submissions && userData.submissions.length > 0) {
+            userData.submissions.forEach((submission, subIdx) => {
+              const qnaData = [
+                [`${userData.name} - Submission ${globalSheetIndex}`],
+                [''],
+                ['User Information'],
+                ['Name:', userData.name],
+                ['Phone:', userData.phone],
+                ['School:', userData.school || 'N/A'],
+                ['Class:', userData.class || 'N/A'],
+                ['Language:', userData.language],
+                ['Attempt:', `${subIdx + 1} of ${userData.submissions.length}`],
+                ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
+                [''],
+                ['Question ID', 'Question', 'Answer']
+              ];
 
-            const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
-            qnaSheet['!cols'] = [{ wch: 12 }, { wch: 70 }, { wch: 40 }];
+              if (submission.answers && submission.answers.length > 0) {
+                submission.answers.forEach(answer => {
+                  qnaData.push([
+                    answer.questionId || 'N/A',
+                    answer.question || 'Question not available',
+                    answer.answer || 'No answer provided'
+                  ]);
+                });
+              } else {
+                qnaData.push(['', 'No answers recorded', '']);
+              }
 
-            // Create unique sheet name using global index
-            let baseSheetName = `U${userIdx + 1}_${userData.name.substring(0, 8)}_A${subIdx + 1}`.replace(/[:\\\/\?\*\[\]]/g, '');
-            let sheetName = baseSheetName;
-            let counter = 1;
-            
-            // Ensure uniqueness
-            while (usedSheetNames.has(sheetName)) {
-              sheetName = `${baseSheetName}_${counter}`;
-              counter++;
-            }
-            usedSheetNames.add(sheetName);
+              const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
+              qnaSheet['!cols'] = [{ wch: 12 }, { wch: 70 }, { wch: 40 }];
 
-            XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
-            globalSheetIndex++;
-          });
-        }
-      });
+              // Create unique sheet name
+              let baseSheetName = `${userData.name.substring(0, 10)}_${globalSheetIndex}`.replace(/[:\\\/\?\*\[\]]/g, '');
+              let sheetName = baseSheetName;
+              let counter = 1;
+              
+              // Ensure uniqueness
+              while (usedSheetNames.has(sheetName)) {
+                sheetName = `${baseSheetName}_${counter}`;
+                counter++;
+              }
+              usedSheetNames.add(sheetName);
 
-      XLSX.writeFile(workbook, `All_Users_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
+              XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
+              globalSheetIndex++;
+            });
+          }
+        });
+
+        XLSX.writeFile(workbook, `All_Submissions_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      } else {
+        // Export all users
+        let globalSheetIndex = 1;
+        
+        completeUsersData.forEach((userData, userIdx) => {
+          if (userData.submissions && userData.submissions.length > 0) {
+            userData.submissions.forEach((submission, subIdx) => {
+              const qnaData = [
+                [`${userData.name} - Attempt ${subIdx + 1}`],
+                [''],
+                ['User Information'],
+                ['Name:', userData.name],
+                ['Phone:', userData.phone],
+                ['School:', userData.school || 'N/A'],
+                ['Class:', userData.class || 'N/A'],
+                ['Language:', userData.language],
+                ['Submitted At:', new Date(submission.submittedAt).toLocaleString()],
+                ['Session ID:', submission.sessionId || 'N/A'],
+                [''],
+                ['Question ID', 'Question', 'Answer']
+              ];
+
+              if (submission.answers && submission.answers.length > 0) {
+                submission.answers.forEach(answer => {
+                  qnaData.push([
+                    answer.questionId || 'N/A',
+                    answer.question || 'Question not available',
+                    answer.answer || 'No answer provided'
+                  ]);
+                });
+              } else {
+                qnaData.push(['', 'No answers', '']);
+              }
+
+              const qnaSheet = XLSX.utils.aoa_to_sheet(qnaData);
+              qnaSheet['!cols'] = [{ wch: 12 }, { wch: 70 }, { wch: 40 }];
+
+              // Create unique sheet name using global index
+              let baseSheetName = `U${userIdx + 1}_${userData.name.substring(0, 8)}_A${subIdx + 1}`.replace(/[:\\\/\?\*\[\]]/g, '');
+              let sheetName = baseSheetName;
+              let counter = 1;
+              
+              // Ensure uniqueness
+              while (usedSheetNames.has(sheetName)) {
+                sheetName = `${baseSheetName}_${counter}`;
+                counter++;
+              }
+              usedSheetNames.add(sheetName);
+
+              XLSX.utils.book_append_sheet(workbook, qnaSheet, sheetName);
+              globalSheetIndex++;
+            });
+          }
+        });
+
+        XLSX.writeFile(workbook, `All_Users_QnA_${new Date().toISOString().split('T')[0]}.xlsx`);
+      }
+      
+      console.log('Export completed successfully');
+
+    } catch (error) {
+      console.error('Error exporting all data:', error);
+      alert(`Error exporting: ${error.message}`);
     }
-    
-    console.log('Export completed successfully');
-
-  } catch (error) {
-    console.error('Error exporting all data:', error);
-    alert(`Error exporting: ${error.message}`);
-  }
-};
-
+  };
 
   const filteredData = getFilteredData();
+  const totalUsers = users.length;
   const totalSubmissions = getAllSubmissions().length;
-  const usersWithMultipleAttempts = users.filter(user => 
-    (user.submissions?.length || 0) > 1 || user.totalAttempts > 1
-  ).length;
+  const repeatUsers = users.filter(u => (u.totalAttempts || u.submissions?.length || 0) >= 2).length;
+  const uniqueLanguages = [...new Set(users.map(u => u.language))].length;
+  const withCertificates = users.filter(u => u.hasCertificate).length;
 
   if (loading) {
     return (
       <div style={styles.loadingContainer}>
         <div style={styles.spinner}></div>
-        <h2>Loading Admin Dashboard...</h2>
+        <h2>Loading Dashboard...</h2>
       </div>
     );
   }
 
   return (
     <div style={styles.container}>
+      {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerContent}>
           <h1 style={styles.title}>Admin Dashboard</h1>
-          <button onClick={onLogout} style={styles.logoutButton}>
+          <button style={styles.logoutButton} onClick={onLogout}>
             Logout
           </button>
         </div>
+        
+        {/* Statistics */}
         <div style={styles.stats}>
           <div style={styles.statCard}>
-            <h3>{users.length}</h3>
+            <h2 style={{ color: '#3498db' }}>{totalUsers}</h2>
             <p>Total Users</p>
           </div>
           <div style={styles.statCard}>
-            <h3>{totalSubmissions}</h3>
+            <h2 style={{ color: '#2ecc71' }}>{totalSubmissions}</h2>
             <p>Total Submissions</p>
           </div>
           <div style={styles.statCard}>
-            <h3>{usersWithMultipleAttempts}</h3>
+            <h2 style={{ color: '#e67e22' }}>{repeatUsers}</h2>
             <p>Repeat Users</p>
           </div>
           <div style={styles.statCard}>
-            <h3>{new Set(users.map(u => u.language)).size}</h3>
+            <h2 style={{ color: '#9b59b6' }}>{uniqueLanguages}</h2>
             <p>Languages</p>
+          </div>
+          <div style={styles.statCard}>
+            <h2 style={{ color: '#27ae60' }}>{withCertificates}</h2>
+            <p>Certificates Issued</p>
           </div>
         </div>
       </div>
 
-      {error && (
-        <div style={styles.errorBox}>
-          <strong>Error:</strong> {error}
-          <button onClick={fetchUsers} style={styles.retryButton}>
-            Retry
-          </button>
-        </div>
-      )}
-
+      {/* View Toggle */}
       <div style={styles.viewToggle}>
         <button
-          onClick={() => setViewMode('users')}
           style={{
             ...styles.toggleButton,
-            backgroundColor: viewMode === 'users' ? '#3498db' : '#bdc3c7'
+            backgroundColor: viewMode === 'users' ? '#3498db' : '#95a5a6'
           }}
+          onClick={() => setViewMode('users')}
         >
-          Users View ({users.length})
+          Users View ({totalUsers})
         </button>
         <button
-          onClick={() => setViewMode('submissions')}
           style={{
             ...styles.toggleButton,
-            backgroundColor: viewMode === 'submissions' ? '#3498db' : '#bdc3c7'
+            backgroundColor: viewMode === 'submissions' ? '#3498db' : '#95a5a6'
           }}
+          onClick={() => setViewMode('submissions')}
         >
           All Submissions ({totalSubmissions})
         </button>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div style={styles.errorBox}>
+          <span>{error}</span>
+          <button style={styles.retryButton} onClick={fetchUsers}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Controls */}
       <div style={styles.controls}>
         <div style={styles.searchContainer}>
           <input
             type="text"
-            placeholder="Search by name, phone, or school..."
+            placeholder="Search by name, phone, school, or class..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={styles.searchInput}
           />
-          
           <select
             value={selectedLanguage}
             onChange={(e) => setSelectedLanguage(e.target.value)}
             style={styles.languageFilter}
           >
             <option value="all">All Languages</option>
-            <option value="tamil">Tamil</option>
             <option value="english">English</option>
+            <option value="hindi">Hindi</option>
+            <option value="tamil">Tamil</option>
             <option value="telugu">Telugu</option>
             <option value="kannada">Kannada</option>
             <option value="marathi">Marathi</option>
-            <option value="hindi">Hindi</option>
           </select>
         </div>
-
         <div style={styles.actionButtons}>
-          <button onClick={fetchUsers} style={styles.refreshButton}>
+          <button style={styles.refreshButton} onClick={fetchUsers}>
             Refresh
           </button>
           <button onClick={exportAllData} style={styles.exportButton}>
@@ -875,124 +774,193 @@ const exportAllData = async () => {
         </div>
       </div>
 
+      {/* Results Info */}
+      <div style={styles.resultsInfo}>
+        Showing {filteredData.length} {viewMode === 'users' ? 'users' : 'submissions'}
+      </div>
+
+      {/* Table */}
       {filteredData.length === 0 ? (
         <div style={styles.noData}>
-          <h3>No {viewMode === 'users' ? 'Users' : 'Submissions'} Found</h3>
-          <p>
-            {users.length === 0 
-              ? 'Quiz submissions will appear here once users start submitting.'
-              : 'Try adjusting your search or language filter.'
-            }
-          </p>
-          <button onClick={fetchUsers} style={styles.refreshButton}>
-            Check Again
-          </button>
+          <h3>No {viewMode} found</h3>
+          <p>Try adjusting your search filters</p>
+        </div>
+      ) : viewMode === 'users' ? (
+        <div style={styles.tableContainer}>
+          <table style={styles.table}>
+            <thead style={styles.tableHeader}>
+              <tr>
+                <th style={styles.th}>Name</th>
+                <th style={styles.th}>Phone</th>
+                <th style={styles.th}>School</th>
+                <th style={styles.th}>Language</th>
+                <th style={styles.th}>Attempts</th>
+                <th style={styles.th}>Latest Submission</th>
+                <th style={styles.th}>Certificate Status</th>
+                <th style={styles.th}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredData.map((user) => (
+                <tr key={user.id || user._id || user.phone} style={styles.tableRow}>
+                  <td style={styles.td}>{user.name}</td>
+                  <td style={styles.td}>{user.phone}</td>
+                  <td style={styles.td}>{user.school || 'N/A'}</td>
+                  <td style={styles.td}>{user.language}</td>
+                  <td style={styles.td}>
+                    {user.totalAttempts || user.submissions?.length || 0}/2
+                  </td>
+                  <td style={styles.td}>
+                    {user.lastSubmission 
+                      ? new Date(user.lastSubmission).toLocaleString()
+                      : 'N/A'}
+                  </td>
+                  <td style={styles.td}>
+                    {getCertificateStatus({...user, id: user.id || user._id})}
+                  </td>
+                  <td style={styles.td}>
+                    <button
+                      onClick={() => exportUserData(user)}
+                      disabled={exportingUserId === (user._id || user.id)}
+                      style={{
+                        ...styles.actionButton,
+                        backgroundColor: exportingUserId === (user._id || user.id) ? '#bdc3c7' : '#28a745',
+                        cursor: exportingUserId === (user._id || user.id) ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      {exportingUserId === (user._id || user.id) ? 'Exporting...' : 'Export Q&A'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
-        <div style={styles.resultsInfo}>
-          <p>
-            Showing {filteredData.length} {viewMode === 'users' ? 'users' : 'submissions'}
-            {searchTerm && ` matching "${searchTerm}"`}
-            {selectedLanguage !== 'all' && ` in ${selectedLanguage}`}
-          </p>
-        </div>
-      )}
-
-      {filteredData.length > 0 && (
         <div style={styles.tableContainer}>
-          {viewMode === 'users' ? (
-            <UsersTable 
-              users={filteredData} 
-              onExportUser={exportUserData}
-              exportingUserId={exportingUserId}
-            />
-          ) : (
-            <SubmissionsTable submissions={filteredData} />
-          )}
+          <table style={styles.table}>
+            <thead style={styles.tableHeader}>
+              <tr>
+                <th style={styles.th}>User</th>
+                <th style={styles.th}>Attempt</th>
+                <th style={styles.th}>Submission Date</th>
+                <th style={styles.th}>Score</th>
+                <th style={styles.th}>Language</th>
+                <th style={styles.th}>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredData.map((submission) => (
+                <tr key={`${submission.user.id}-${submission.submissionNumber}`} style={styles.tableRow}>
+                  <td style={styles.td}>
+                    <div>
+                      <strong>{submission.user.name}</strong>
+                      <div style={{fontSize: '12px', color: '#666'}}>
+                        {submission.user.phone}
+                      </div>
+                    </div>
+                  </td>
+                  <td style={styles.td}>
+                    {submission.submissionNumber}/{submission.totalUserSubmissions}
+                  </td>
+                  <td style={styles.td}>
+                    {new Date(submission.submittedAt).toLocaleString()}
+                  </td>
+                  <td style={styles.td}>
+                    {submission.score}/{submission.totalQuestions || 'N/A'}
+                    {submission.percentage && 
+                      <div style={{fontSize: '12px', color: '#666'}}>
+                        ({submission.percentage.toFixed(1)}%)
+                      </div>
+                    }
+                  </td>
+                  <td style={styles.td}>{submission.user.language}</td>
+                  <td style={styles.td}>
+                    <div style={{fontSize: '12px', color: '#666'}}>
+                      {submission.user.school && `School: ${submission.user.school}`}
+                      {submission.user.class && <div>Class: ${submission.user.class}</div>}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
   );
 };
 
-// Users Table Component
-const UsersTable = ({ users, onExportUser, exportingUserId }) => (
-  <table style={styles.table}>
-    <thead>
-      <tr style={styles.tableHeader}>
-        <th style={styles.th}>Name</th>
-        <th style={styles.th}>Phone</th>
-        <th style={styles.th}>School</th>
-        <th style={styles.th}>Language</th>
-        <th style={styles.th}>Attempts</th>
-        <th style={styles.th}>Latest Submission</th>
-        <th style={styles.th}>Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-      {users.map((user, index) => (
-        <tr key={user._id || user.id || index} style={{ 
-          ...styles.tableRow,
-          backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white'
-        }}>
-          <td style={styles.td}><strong>{user.name || 'N/A'}</strong></td>
-          <td style={styles.td}>{user.phone || 'N/A'}</td>
-          <td style={styles.td}>{user.school || '-'}</td>
-          <td style={styles.td}>{user.language || 'N/A'}</td>
-          <td style={styles.td}>{user.totalAttempts || user.submissions?.length || 1}</td>
-          <td style={styles.td}>
-            {new Date(user.lastSubmission || user.updatedAt || user.createdAt).toLocaleDateString()}
-          </td>
-          <td style={styles.td}>
-            <button
-              onClick={() => onExportUser(user)}
-              disabled={exportingUserId === (user._id || user.id)}
-              style={{
-                ...styles.actionButton,
-                backgroundColor: exportingUserId === (user._id || user.id) ? '#bdc3c7' : '#28a745',
-                cursor: exportingUserId === (user._id || user.id) ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {exportingUserId === (user._id || user.id) ? 'Exporting...' : 'Export Q&A'}
-            </button>
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-);
-
-// Submissions Table Component
-const SubmissionsTable = ({ submissions }) => (
-  <table style={styles.table}>
-    <thead>
-      <tr style={styles.tableHeader}>
-        <th style={styles.th}>User</th>
-        <th style={styles.th}>Language</th>
-        <th style={styles.th}>Attempt #</th>
-        <th style={styles.th}>Answers</th>
-        <th style={styles.th}>Submitted At</th>
-      </tr>
-    </thead>
-    <tbody>
-      {submissions.map((submission, index) => (
-        <tr key={`${submission.user._id || submission.user.id}-${submission.submittedAt}-${index}`} style={{ 
-          ...styles.tableRow,
-          backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white'
-        }}>
-          <td style={styles.td}><strong>{submission.user.name}</strong></td>
-          <td style={styles.td}>{submission.user.language}</td>
-          <td style={styles.td}>#{submission.submissionNumber}</td>
-          <td style={styles.td}>{submission.answers?.length || 0} answers</td>
-          <td style={styles.td}>{new Date(submission.submittedAt).toLocaleDateString()}</td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-);
-
-// Styles (same as before)
+// Styles
 const styles = {
+  certificateReady: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px',
+    alignItems: 'flex-start'
+  },
+  certificateBadge: {
+    padding: '6px 12px',
+    backgroundColor: '#d4edda',
+    color: '#155724',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: 'bold'
+  },
+  certNumber: {
+    fontSize: '11px',
+    color: '#666'
+  },
+  downloadButton: {
+    padding: '6px 12px',
+    backgroundColor: '#007bff',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px'
+  },
+  certificatePending: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px',
+    alignItems: 'flex-start'
+  },
+  pendingBadge: {
+    padding: '6px 12px',
+    backgroundColor: '#fff3cd',
+    color: '#856404',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: 'bold'
+  },
+  generateButton: {
+    padding: '6px 12px',
+    backgroundColor: '#28a745',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '12px'
+  },
+  notEligible: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '5px',
+    alignItems: 'flex-start'
+  },
+  notEligibleBadge: {
+    padding: '6px 12px',
+    backgroundColor: '#f8d7da',
+    color: '#721c24',
+    borderRadius: '4px',
+    fontSize: '12px',
+    fontWeight: 'bold'
+  },
+  notEligibleText: {
+    fontSize: '11px',
+    color: '#666'
+  },
   loginContainer: {
     display: 'flex',
     justifyContent: 'center',

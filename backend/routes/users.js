@@ -1,5 +1,6 @@
 import express from 'express';
 import { User, Submission, Answer } from '../models/index.js';
+import certificateController from '../controllers/certificateController.js';
 
 const router = express.Router();
 
@@ -68,6 +69,35 @@ router.post('/', async (req, res) => {
         totalAttempts: existingUser.totalAttempts + 1,
         lastSubmission: new Date()
       });
+
+      // If user reached 2 attempts, attempt to generate certificate automatically
+      let certificateResult = null;
+      try {
+        const updatedAttempts = existingUser.totalAttempts + 1;
+        if (updatedAttempts === 2) {
+          // Fetch submissions for this user to pass to certificate generator
+          const subs = await Submission.findAll({
+            where: { userId: existingUser.id },
+            include: [{ model: Answer, as: 'answers' }],
+            order: [['submittedAt', 'ASC']]
+          });
+
+          const submissionPayload = subs.map(s => ({
+            id: s.id,
+            submittedAt: s.submittedAt,
+            score: s.score || 0,
+            totalQuestions: Array.isArray(s.answers) ? s.answers.length : 0,
+            percentage: (Array.isArray(s.answers) && s.answers.length > 0) ? ((s.score || 0) / s.answers.length) * 100 : 0,
+            completionTime: s.completionTime
+          }));
+
+          // Call controller to generate certificate
+          certificateResult = await certificateController.checkAndGenerateCertificate(existingUser.id, { submissions: submissionPayload });
+        }
+      } catch (certErr) {
+        console.error('Auto certificate generation failed:', certErr);
+        // Don't block submission creation on certificate errors
+      }
 
       // Reload user with all submissions
       const updatedUser = await User.findByPk(existingUser.id, {

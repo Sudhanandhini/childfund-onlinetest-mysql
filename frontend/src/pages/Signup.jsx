@@ -41,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { indianStates, getDistricts } from '../data/statesAndDistricts';
+import logo from "../assets/41-years.png";
 
 const theme = createTheme({
   palette: {
@@ -336,7 +337,7 @@ export default function Signup() {
               {/* Animated Header */}
               <Box
                 sx={{
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  background: 'linear-gradient(135deg, #0c8854ff 0%, #076d07ff 100%)',
                   color: 'white',
                   p: { xs: 3, sm: 5 },
                   textAlign: 'center',
@@ -358,7 +359,7 @@ export default function Signup() {
                   }
                 }}
               >
-                <Avatar
+                {/* <Avatar
                   sx={{
                     width: { xs: 80, sm: 100 },
                     height: { xs: 80, sm: 100 },
@@ -374,7 +375,8 @@ export default function Signup() {
                   }}
                 >
                   <PersonAdd sx={{ fontSize: { xs: 40, sm: 50 } }} />
-                </Avatar>
+                </Avatar> */}
+               <img src={logo} alt="Logo" width="100" height="100" style={{backgroundColor:"#fff", padding:"5px", borderRadius:"10px"}} />
                 <Typography
                   variant="h4"
                   gutterBottom

@@ -3,7 +3,8 @@ import Certificate from '../models/Certificate.js';
 import User from '../models/User.js';
 import Submission from '../models/Submission.js';
 import Answer from '../models/Answer.js';
-import certificateService from '../services/certificateService.js';
+// Use the PDF-based certificate service implementation
+import certificateService from '../services/certificateService_replacement.js';
 
 class CertificateController {
 

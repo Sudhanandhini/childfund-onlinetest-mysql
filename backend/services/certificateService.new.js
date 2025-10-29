@@ -54,7 +54,7 @@ class CertificateService {
         doc.font('Times-Bold').fontSize(48).fillColor('#1565C0').text(name || 'Participant', { align: 'center' });
         doc.moveDown(0.7);
 
-        doc.font('Times-Roman').fontSize(18).fillColor('#000000').text('for successfully completing the MERN Quiz Assessment', { align: 'center' });
+        doc.font('Times-Roman').fontSize(18).fillColor('#000000').text('for successfully completing the Knowledge, Attitude, and Practices (KAP) ', { align: 'center' });
         doc.moveDown(0.3);
         doc.fontSize(16).text('and demonstrating excellence in knowledge and dedication.', { align: 'center' });
 

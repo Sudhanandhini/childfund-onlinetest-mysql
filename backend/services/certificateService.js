@@ -117,7 +117,7 @@ class CertificateService {
             alignment: AlignmentType.CENTER,
             children: [
               new TextRun({
-                text: 'for successfully completing the MERN Quiz Assessment',
+                text: 'for successfully completing the Knowledge, Attitude, and Practices (KAP) ',
                 size: 26,
                 color: '000000',
                 font: 'Arial'

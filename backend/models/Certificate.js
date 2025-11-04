@@ -64,19 +64,8 @@ const Certificate = sequelize.define('Certificate', {
 }, {
   tableName: 'certificates',
   timestamps: true,
-  indexes: [
-    {
-      unique: true,
-      fields: ['userId']
-    },
-    {
-      unique: true,
-      fields: ['certificateNumber']
-    },
-    {
-      fields: ['phone']
-    }
-  ]
+  // Indexes are defined via column-level `unique` flags above.
+  // Avoid re-declaring indexes here to prevent duplicate-key alter operations when using `sync({ alter: true })`.
 });
 
 export default Certificate;

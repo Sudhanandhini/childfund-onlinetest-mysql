@@ -50,10 +50,12 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('MySQL connected successfully');
 
-    // Sync models with database (creates/updates tables)
-    // NOTE: use { force: true } only in development when you want to drop tables.
-    await sequelize.sync({ alter: true });
-    console.log('Database synced');
+  // Sync models with database (creates tables if missing).
+  // Avoid using `alter: true` here to prevent Sequelize from issuing ALTER
+  // statements which can fail on databases with many existing indexes.
+  // If you need schema migrations, use a proper migration tool instead.
+  await sequelize.sync();
+  console.log('Database synced (no alter)');
 
     const server = app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

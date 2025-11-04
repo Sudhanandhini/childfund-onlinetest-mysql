@@ -1,0 +1,205 @@
+// replacement content for certificateService.js (PDF implementation)
+import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+class CertificateService {
+  generateCertificateNumber() {
+    const date = new Date();
+    const year = date.getFullYear();
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return `CERT-${year}-${timestamp}${random}`;
+  }
+
+  async generateCertificate(userData, submissionData) {
+    const { name, phone } = userData || {};
+    const certificateNumber = this.generateCertificateNumber();
+    const issueDate = new Date();
+
+    // Ensure certificates directory exists
+    const certificatesDir = path.join(__dirname, '..', 'certificates');
+    if (!fs.existsSync(certificatesDir)) {
+      fs.mkdirSync(certificatesDir, { recursive: true });
+    }
+
+    const safePhone = String(phone || 'unknown').replace(/[^0-9a-zA-Z_-]/g, '');
+    const fileName = `certificate_${safePhone}_${Date.now()}.pdf`;
+    const filePath = path.join(certificatesDir, fileName);
+
+    return await new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ 
+          size: 'A4', 
+          layout: 'landscape',
+          margin: 50,
+          font: 'Helvetica'  // Set default font
+        });
+        const stream = fs.createWriteStream(filePath);
+        doc.pipe(stream);
+
+        // Set up the page layout
+        const pageWidth = doc.page.width;
+        const pageHeight = doc.page.height;
+        const margin = 50;  // consistent margins
+
+        // Left panel for photo (40% width)
+        const leftWidth = pageWidth * 0.40;
+        // Right content area (60% minus margins)
+        const rightX = margin + leftWidth + 20;  // 20px gap between panels
+        const contentWidth = pageWidth - rightX - margin;
+
+        // Draw left panel background (beige color from image)
+        doc.save();
+        doc.rect(margin, margin, leftWidth - 10, pageHeight - 2 * margin)
+           .fill('#F5F5F5');  // Light beige color
+
+        // Draw ChildFund logo and title at the top right
+        const logoY = margin + 10;
+        doc.image('frontend/src/assets/41-years.png', rightX, logoY, { 
+          width: 120  // Adjust size as needed
+        });
+
+        // Main title - centered, green text
+        doc.font('Helvetica-Bold')
+           .fontSize(32)
+           .fillColor('#1B5E20')  // Dark green
+           .text('CERTIFICATE OF', rightX, logoY + 50, {
+             width: contentWidth,
+             align: 'center'
+           })
+           .text('COMPLETION', rightX, doc.y + 5, {
+             width: contentWidth,
+             align: 'center'
+           });
+
+        // Space before "This certifies that"
+        const certifiesY = doc.y + 40;
+        doc.font('Helvetica')
+           .fontSize(14)
+           .fillColor('#000000')
+           .text('This certifies that', rightX, certifiesY, {
+             width: contentWidth,
+             align: 'center'
+           });
+
+        // Participant name placeholder - large and centered
+        const nameY = doc.y + 20;
+        doc.font('Helvetica-Bold')
+           .fontSize(28)
+           .fillColor('#000000')
+           .text(name || '(Insert name)', rightX, nameY, {
+             width: contentWidth,
+             align: 'center'
+           });
+
+        // Achievement text - justified
+        const achievementY = doc.y + 30;
+        doc.font('Helvetica')
+           .fontSize(12)
+           .fillColor('#000000');
+        
+        // Split text into lines for better control
+        doc.text(
+          'has successfully completed the training on 'Online Safety and Digital',
+          rightX + 40, achievementY, {
+            width: contentWidth - 80,
+            align: 'left'
+          }
+        );
+        doc.text(
+          'Responsibility Training' organised by ChildFund India.',
+          rightX + 40, doc.y + 5, {
+            width: contentWidth - 80,
+            align: 'left'
+          }
+        );
+
+        // Additional text paragraph
+        const descY = doc.y + 15;
+        doc.fontSize(11)
+           .fillColor('#444444')
+           .text(
+             'This training has equipped you with the knowledge and skills to stay safe, smart and responsible online, protecting yourself and others in the digital world.',
+             rightX + 40, descY, {
+               width: contentWidth - 80,
+               align: 'left',
+               lineGap: 2
+             }
+           );
+
+        // Signature section near bottom
+        const sigY = pageHeight - margin - 100;
+        doc.moveTo(rightX + contentWidth/2 - 75, sigY)
+           .lineTo(rightX + contentWidth/2 + 75, sigY)
+           .stroke('#000000');
+
+        // Signature text
+        doc.font('Helvetica-Bold')
+           .fontSize(12)
+           .fillColor('#006064')
+           .text('Anand Vishwakarma', rightX + contentWidth/2 - 75, sigY + 5, {
+             width: 150,
+             align: 'center'
+           });
+        
+        doc.font('Helvetica')
+           .fontSize(10)
+           .fillColor('#444444')
+           .text('Executive Director, ChildFund India', rightX + contentWidth/2 - 75, doc.y + 2, {
+             width: 150,
+             align: 'center'
+           });
+
+        // Certificate details at bottom
+        const footerY = pageHeight - margin - 35;
+        doc.fontSize(9)
+           .fillColor('#666666')
+           .text(`Certificate No: CERT-${year}-${timestamp}${random}`,
+             rightX, footerY, {
+               width: contentWidth,
+               align: 'center'
+             }
+           )
+           .text(`Issue Date: ${issueDate.toLocaleDateString('en-IN', { 
+             year: 'numeric', 
+             month: 'long', 
+             day: 'numeric' 
+           })}`,
+             rightX, doc.y + 2, {
+               width: contentWidth,
+               align: 'center'
+             }
+           );
+
+        // Certificate number and date (center bottom)
+        const footerY = pageHeight - doc.page.margins.bottom - 30;
+        doc.fontSize(10).fillColor('#757575').text(`Certificate No: ${certificateNumber}`, rightX, footerY - 10, { width: rightWidth, align: 'center' });
+        doc.text(`Issue Date: ${issueDate.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`, rightX, footerY + 2, { width: rightWidth, align: 'center' });
+
+        doc.restore();
+
+        doc.end();
+
+        stream.on('finish', () => {
+          resolve({
+            certificateNumber,
+            filePath: `/certificates/${fileName}`,
+            fileName,
+            issueDate
+          });
+        });
+
+        stream.on('error', (err) => reject(err));
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+}
+
+export default new CertificateService();

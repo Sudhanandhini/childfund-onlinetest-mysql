@@ -651,6 +651,7 @@ export default function ThankYou() {
                         color="success"
                         sx={{ py: 2 }}
                         disabled={certLoading}
+                        style={{color:'white'}}
                       >
                         {certLoading ? 'Preparing...' : 'Download Certificate'}
                       </Button>
